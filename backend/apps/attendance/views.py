@@ -7,6 +7,66 @@ import csv
 from .models import Attendance
 from .serializers import AttendanceSerializer, CheckinSerializer, CheckoutSerializer
 from apps.guards.models import Guard
+from calendar import monthrange
+from datetime import date
+
+# --- Attendance summary for calendar ---
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def attendance_summary(request):
+    """
+    Returns a dict: { 'YYYY-MM-DD': 'present'|'absent'|'late'|'half'|'weekend' } for the given guard, year, month
+    """
+    user = request.user
+    guard_id = request.GET.get('guard_id')
+    year = int(request.GET.get('year', date.today().year))
+    month = int(request.GET.get('month', date.today().month))
+
+    # Get the guard
+    # from apps.guards.models import Guard  # already imported at top
+    if guard_id:
+        try:
+            guard = Guard.objects.get(id=guard_id)
+        except Guard.DoesNotExist:
+            return Response({'error': 'Guard not found'}, status=404)
+    else:
+        guard = get_guard_for_user(user)
+        if not guard:
+            return Response({'error': 'Guard not found'}, status=404)
+
+    # Get all attendances for this guard in the month
+    # from .models import Attendance  # already imported at top
+    start_date = date(year, month, 1)
+    end_date = date(year, month, monthrange(year, month)[1])
+    attendances = Attendance.objects.filter(guard=guard, checkin_time__date__gte=start_date, checkin_time__date__lte=end_date)
+
+    # Build a map: { 'YYYY-MM-DD': 'present'|'absent'|'late'|'half'|'weekend' }
+    days = {}
+    weekends = []
+    # Get weekend days from guard profile if available, else default to [6, 0] (Sat, Sun)
+    weekend_days = [6, 0]
+    if hasattr(guard, 'weekend_days') and guard.weekend_days:
+        # Parse as comma-separated string
+        day_map = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4, 'saturday': 5, 'sunday': 6}
+        weekend_days = [day_map[d.strip().lower()] for d in guard.weekend_days.split(',') if d.strip().lower() in day_map]
+
+    for d in range(1, monthrange(year, month)[1] + 1):
+        dt = date(year, month, d)
+        key = dt.isoformat()
+        if dt.weekday() in weekend_days:
+            days[key] = 'weekend'
+            weekends.append(dt.weekday())
+        else:
+            # Find attendance for this day
+            att = [a for a in attendances if a.checkin_time.date() == dt]
+            if att:
+                # You can add more logic for late/half here
+                days[key] = 'present'
+            else:
+                days[key] = 'absent'
+
+
+    return Response({'days': days, 'weekends': weekend_days})
 
 # Helper to get the guard object for the logged-in user
 

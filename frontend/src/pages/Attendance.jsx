@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Clock, Download, Filter, CheckCircle, XCircle } from 'lucide-react';
+import { Clock, Download, Filter, CheckCircle, XCircle, Calendar, CalendarDays } from 'lucide-react';
+import { DayPicker } from 'react-day-picker';
+import 'react-day-picker/dist/style.css';
+import { format, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, isToday } from 'date-fns';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -12,10 +15,32 @@ const Attendance = () => {
   const [checkinLoading, setCheckinLoading] = useState(false);
   const [checkinError, setCheckinError] = useState('');
   const [checkinSuccess, setCheckinSuccess] = useState('');
+  const [selectedGuard, setSelectedGuard] = useState(null);
+  const [guards, setGuards] = useState([]);
+  const [viewMode, setViewMode] = useState('calendar');
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   useEffect(() => {
     fetchAttendanceData();
+    if (user?.role !== 'guard') {
+      api.get('/guards/').then(data => {
+        setGuards(data);
+        if (data.length > 0) {
+          setSelectedGuard(String(data[0].id));
+        } else {
+          setSelectedGuard('');
+        }
+      });
+    } else {
+      setSelectedGuard(String(user.id));
+    }
   }, []);
+
+  useEffect(() => {
+    console.log('attendances:', attendances);
+    console.log('activeAttendances:', activeAttendances);
+    console.log('user:', user);
+  }, [attendances, activeAttendances, user]);
 
   const fetchAttendanceData = async () => {
     setLoading(true);
@@ -107,14 +132,55 @@ const Attendance = () => {
     return `${hours}h ${minutes}m`;
   };
 
-  const filteredAttendances = attendances.filter(attendance => {
-    if (user?.role === 'guard' && attendance.guard?.username && user.username) {
-      if (attendance.guard.username !== user.username) return false;
-    }
-    if (filter === 'active') return !attendance.checkout_time;
-    if (filter === 'completed') return attendance.checkout_time;
-    return true;
-  });
+  // Filter attendances and activeAttendances based on selectedGuard for admin/manager
+  const filteredAttendances = user?.role === 'guard'
+    ? attendances.filter(attendance => attendance.guard?.username === user.username)
+    : attendances.filter(attendance => String(attendance.guard?.id) === selectedGuard);
+
+  const filteredActiveAttendances = user?.role === 'guard'
+    ? activeAttendances.filter(attendance => attendance.guard?.username === user.username)
+    : activeAttendances.filter(attendance => String(attendance.guard?.id) === selectedGuard);
+
+  // Attendance status logic
+  const getAttendanceForDate = (date) => {
+    return filteredAttendances.filter(attendance => isSameDay(new Date(attendance.checkin_time), date));
+  };
+  const getAttendanceStatus = (date) => {
+    const dayAttendances = getAttendanceForDate(date);
+    if (dayAttendances.length === 0) return 'absent';
+    if (dayAttendances.some(att => !att.checkout_time)) return 'active';
+    return 'present';
+  };
+
+  // Monthly summary
+  const currentMonth = new Date();
+  const monthStart = startOfMonth(currentMonth);
+  const monthEnd = endOfMonth(currentMonth);
+  const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
+  const monthlyStats = monthDays.reduce((stats, day) => {
+    const status = getAttendanceStatus(day);
+    stats[status]++;
+    return stats;
+  }, { present: 0, active: 0, absent: 0 });
+
+  const selectedDateAttendances = getAttendanceForDate(selectedDate);
+  const selectedDateStatus = getAttendanceStatus(selectedDate);
+
+  // Place these after all useState/useEffect hooks, but before any return or render logic:
+  const calendarModifiers = {
+    present: (date) => getAttendanceStatus(date) === 'present',
+    active: (date) => getAttendanceStatus(date) === 'active',
+    absent: (date) => getAttendanceStatus(date) === 'absent',
+    today: (date) => isToday(date),
+    selected: (date) => isSameDay(date, selectedDate),
+  };
+  const calendarModifiersStyles = {
+    present: { backgroundColor: '#10B981', color: 'white' },
+    active: { backgroundColor: '#3B82F6', color: 'white' },
+    absent: { backgroundColor: '#EF4444', color: 'white' },
+    today: { border: '2px solid #3B82F6' },
+    selected: { backgroundColor: '#8B5CF6', color: 'white' },
+  };
 
   if (loading) {
     return (
@@ -126,6 +192,38 @@ const Attendance = () => {
 
   return (
     <div className="space-y-6 px-2 sm:px-4 md:px-8 lg:px-16 xl:px-32">
+      {/* Show new calendar for guards */}
+      {/* Guard selection for admin/manager */}
+      {user?.role !== 'guard' && (
+        <div className="mb-4 flex items-center gap-2">
+          <label className="font-medium">Select Guard:</label>
+          <select
+            className="border rounded px-2 py-1"
+            value={selectedGuard}
+            onChange={e => setSelectedGuard(e.target.value)}
+            disabled={guards.length === 0}
+          >
+            {guards.map(g => (
+              <option key={g.id} value={g.id}>{g.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+      {/* Only show the single calendar above if summary/details block is NOT being shown */}
+      {user?.role !== 'guard' && guards.length > 0 && selectedGuard && viewMode === 'calendar' && !(((user?.role === 'guard') || (user?.role !== 'guard' && selectedGuard)) && viewMode === 'calendar') && (
+        <div className="mb-8 flex justify-center w-full">
+          <div className="w-full max-w-xl">
+            <DayPicker
+              mode="single"
+              selected={selectedDate}
+              onSelect={setSelectedDate}
+              modifiers={calendarModifiers}
+              modifiersStyles={calendarModifiersStyles}
+              className="w-full"
+            />
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0">
         <div>
@@ -134,13 +232,37 @@ const Attendance = () => {
             {user?.role === 'guard' ? 'Your check-ins, check-outs, and working hours' : 'Track guard check-ins, check-outs, and working hours'}
           </p>
         </div>
-        <button
-          onClick={exportAttendance}
-          className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 w-full sm:w-auto"
-        >
-          <Download className="h-4 w-4 mr-2" />
-          Export CSV
-        </button>
+        <div className="flex gap-2">
+          <div className="flex border border-gray-300 rounded-md">
+            <button
+              onClick={() => setViewMode('calendar')}
+              className={`px-3 py-2 text-sm font-medium ${viewMode === 'calendar'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+                } rounded-l-md`}
+            >
+              <Calendar className="h-4 w-4 inline mr-1" />
+              Calendar
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`px-3 py-2 text-sm font-medium ${viewMode === 'table'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+                } rounded-r-md`}
+            >
+              <Clock className="h-4 w-4 inline mr-1" />
+              Table
+            </button>
+          </div>
+          <button
+            onClick={exportAttendance}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </button>
+        </div>
       </div>
 
       {/* Guard Check-in Button */}
@@ -182,7 +304,7 @@ const Attendance = () => {
                         Active
                       </span>
                     </div>
-                    {user?.role === 'guard' && (
+                    {user?.role === 'guard' && attendance.guard?.username === user.username && (
                       <button
                         onClick={() => handleCheckout(attendance.id)}
                         className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700 w-full sm:w-auto"
@@ -198,49 +320,114 @@ const Attendance = () => {
         </div>
       )}
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
-        <Filter className="h-5 w-5 text-gray-400" />
-        <select
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="block w-full sm:w-40 px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-        >
-          <option value="all">All Records</option>
-          <option value="active">Active Only</option>
-          <option value="completed">Completed Only</option>
-        </select>
-      </div>
-
-      {/* Attendance Table */}
-      <div className="bg-white shadow overflow-x-auto sm:rounded-md">
-        <table className="min-w-full divide-y divide-gray-200 text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-2 sm:px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Guard</th>
-              <th className="px-2 sm:px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Check-in</th>
-              <th className="px-2 sm:px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Check-out</th>
-              <th className="px-2 sm:px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Duration</th>
-              <th className="px-2 sm:px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Check-in Method</th>
-              <th className="px-2 sm:px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Check-out Method</th>
-              <th className="px-2 sm:px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Notes</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filteredAttendances.map((attendance) => (
-              <tr key={attendance.id} className="hover:bg-gray-50">
-                <td className="px-2 sm:px-4 py-2 whitespace-nowrap">{attendance.guard?.name}</td>
-                <td className="px-2 sm:px-4 py-2 whitespace-nowrap">{attendance.checkin_time ? new Date(attendance.checkin_time).toLocaleString() : '-'}</td>
-                <td className="px-2 sm:px-4 py-2 whitespace-nowrap">{attendance.checkout_time ? new Date(attendance.checkout_time).toLocaleString() : '-'}</td>
-                <td className="px-2 sm:px-4 py-2 whitespace-nowrap">{formatDuration(attendance.duration)}</td>
-                <td className="px-2 sm:px-4 py-2 whitespace-nowrap">{attendance.checkin_method}</td>
-                <td className="px-2 sm:px-4 py-2 whitespace-nowrap">{attendance.checkout_method || '-'}</td>
-                <td className="px-2 sm:px-4 py-2 whitespace-nowrap">{attendance.notes}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {((user?.role === 'guard') || (user?.role !== 'guard' && selectedGuard)) && viewMode === 'calendar' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Monthly Summary Cards */}
+          <div className="lg:col-span-2">
+            <div className="bg-white shadow rounded-lg p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Monthly Summary</h3>
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="text-center p-3 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">{monthlyStats.present}</div>
+                  <div className="text-sm text-green-700">Present Days</div>
+                </div>
+                <div className="text-center p-3 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">{monthlyStats.active}</div>
+                  <div className="text-sm text-blue-700">Active Days</div>
+                </div>
+                <div className="text-center p-3 bg-red-50 rounded-lg">
+                  <div className="text-2xl font-bold text-red-600">{monthlyStats.absent}</div>
+                  <div className="text-sm text-red-700">Absent Days</div>
+                </div>
+              </div>
+              {/* Calendar Legend */}
+              <div className="flex flex-wrap gap-4 mb-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-green-500 rounded"></div>
+                  <span>Present</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-blue-500 rounded"></div>
+                  <span>Active</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-red-500 rounded"></div>
+                  <span>Absent</span>
+                </div>
+              </div>
+              {/* Calendar */}
+              <div>
+                <DayPicker
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={setSelectedDate}
+                  className="w-full"
+                  modifiers={calendarModifiers}
+                  modifiersStyles={calendarModifiersStyles}
+                />
+                {/* Selected Date Details */}
+                <div className="bg-white shadow rounded-lg p-6 mt-6">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    {format(selectedDate, 'EEEE, MMMM d, yyyy')}
+                  </h3>
+                  {/* Status Badge */}
+                  <div className="mb-4">
+                    {selectedDateStatus === 'present' && (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                        <CheckCircle className="h-4 w-4 mr-1" />
+                        Present
+                      </span>
+                    )}
+                    {selectedDateStatus === 'active' && (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                        <Clock className="h-4 w-4 mr-1" />
+                        Active
+                      </span>
+                    )}
+                    {selectedDateStatus === 'absent' && (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
+                        <XCircle className="h-4 w-4 mr-1" />
+                        Absent
+                      </span>
+                    )}
+                  </div>
+                  {/* Attendance Details */}
+                  {selectedDateAttendances.length > 0 ? (
+                    <div className="space-y-3">
+                      <h4 className="font-medium text-gray-900">Attendance Records:</h4>
+                      {selectedDateAttendances.map((attendance, index) => (
+                        <div key={attendance.id} className="border border-gray-200 rounded-lg p-3">
+                          <div className="text-sm">
+                            <div className="font-medium text-gray-900">
+                              Session {index + 1}
+                            </div>
+                            <div className="text-gray-600 mt-1">
+                              <div>Check-in: {new Date(attendance.checkin_time).toLocaleTimeString()}</div>
+                              {attendance.checkout_time && (
+                                <div>Check-out: {new Date(attendance.checkout_time).toLocaleTimeString()}</div>
+                              )}
+                              <div>Method: {attendance.checkin_method}</div>
+                              {attendance.notes && (
+                                <div className="mt-1 text-xs text-gray-500">
+                                  Notes: {attendance.notes}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-gray-500 text-center py-4">
+                      No attendance records for this date
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

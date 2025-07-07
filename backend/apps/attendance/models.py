@@ -1,6 +1,16 @@
 from django.db import models
-from apps.guards.models import Guard
+ # Removed direct import to avoid circular import
 from apps.authentication.models import Organization
+
+
+class Shift(models.Model):
+    name = models.CharField(max_length=100)
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='shifts')
+
+    def __str__(self):
+        return f"{self.name} ({self.start_time} - {self.end_time}) - {self.organization.name}"
 
 
 class Attendance(models.Model):
@@ -10,7 +20,7 @@ class Attendance(models.Model):
     ]
 
     guard = models.ForeignKey(
-        Guard, on_delete=models.CASCADE, related_name="attendances"
+        'guards.Guard', on_delete=models.CASCADE, related_name="attendances"
     )
     organization = models.ForeignKey(
         Organization,
@@ -18,6 +28,9 @@ class Attendance(models.Model):
         related_name="attendances",
         null=True,
         blank=True,
+    )
+    shift = models.ForeignKey(
+        Shift, on_delete=models.SET_NULL, null=True, blank=True, related_name="attendances"
     )
     checkin_time = models.DateTimeField()
     checkout_time = models.DateTimeField(null=True, blank=True)
