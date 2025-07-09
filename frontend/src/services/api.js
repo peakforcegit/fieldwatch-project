@@ -7,7 +7,9 @@ class ApiService {
 
   async request(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
-    const token = localStorage.getItem('access_token');
+    
+    // Check for tokens in sessionStorage first (current session), then localStorage (persistent)
+    let token = sessionStorage.getItem('access_token') || localStorage.getItem('access_token');
     
     const config = {
       headers: {
@@ -28,8 +30,9 @@ class ApiService {
         // Token expired, try to refresh
         const refreshed = await this.refreshToken();
         if (refreshed) {
-          // Retry the original request
-          config.headers.Authorization = `Bearer ${localStorage.getItem('access_token')}`;
+          // Retry the original request with new token
+          token = sessionStorage.getItem('access_token') || localStorage.getItem('access_token');
+          config.headers.Authorization = `Bearer ${token}`;
           const retryResponse = await fetch(url, config);
           if (!retryResponse.ok) {
             throw new Error(`HTTP error! status: ${retryResponse.status}`);
@@ -39,6 +42,9 @@ class ApiService {
           // Refresh failed, redirect to login
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
+          sessionStorage.removeItem('access_token');
+          sessionStorage.removeItem('refresh_token');
+          sessionStorage.removeItem('remember_me');
           window.location.href = '/login';
           return;
         }
@@ -70,7 +76,8 @@ class ApiService {
   }
 
   async refreshToken() {
-    const refreshToken = localStorage.getItem('refresh_token');
+    // Check for refresh token in sessionStorage first, then localStorage
+    const refreshToken = sessionStorage.getItem('refresh_token') || localStorage.getItem('refresh_token');
     if (!refreshToken) return false;
 
     try {
@@ -84,18 +91,31 @@ class ApiService {
 
       if (response.ok) {
         const data = await response.json();
-        // Save both access and refresh if both are returned
-        if (data.access) localStorage.setItem('access_token', data.access);
-        if (data.refresh) localStorage.setItem('refresh_token', data.refresh);
+        // Save both access and refresh tokens to both storage types
+        if (data.access) {
+          localStorage.setItem('access_token', data.access);
+          sessionStorage.setItem('access_token', data.access);
+        }
+        if (data.refresh) {
+          localStorage.setItem('refresh_token', data.refresh);
+          sessionStorage.setItem('refresh_token', data.refresh);
+        }
         return true;
       }
-      // If refresh fails, clear tokens
+      // If refresh fails, clear tokens from both storage types
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
+      sessionStorage.removeItem('access_token');
+      sessionStorage.removeItem('refresh_token');
+      sessionStorage.removeItem('remember_me');
       return false;
     } catch {
+      // Clear tokens from both storage types on error
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
+      sessionStorage.removeItem('access_token');
+      sessionStorage.removeItem('refresh_token');
+      sessionStorage.removeItem('remember_me');
       return false;
     }
   }

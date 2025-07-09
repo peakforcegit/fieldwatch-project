@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { FileText, Download, Calendar, TrendingUp, Users, Clock } from 'lucide-react';
+import { FileText, Download, Calendar, TrendingUp, Users, Clock, MapPin } from 'lucide-react';
 import api from '../services/api';
 
 const Reports = () => {
@@ -112,6 +112,24 @@ const Reports = () => {
             icon={Users}
             color="text-purple-600"
           />
+          <StatCard
+            title="Manual Check-outs"
+            value={monthlyReport.checkout_method_counts?.manual || 0}
+            icon={Clock}
+            color="text-gray-600"
+          />
+          <StatCard
+            title="Auto Check-outs"
+            value={monthlyReport.checkout_method_counts?.auto || 0}
+            icon={Clock}
+            color="text-yellow-600"
+          />
+          <StatCard
+            title="Geo Check-outs"
+            value={monthlyReport.checkout_method_counts?.geo || 0}
+            icon={MapPin}
+            color="text-red-600"
+          />
         </div>
       )}
 
@@ -178,17 +196,51 @@ const Reports = () => {
                         {guard.avg_hours_per_day}h
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          guard.avg_hours_per_day >= 8
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${guard.avg_hours_per_day >= 8
                             ? 'bg-green-100 text-green-800'
                             : guard.avg_hours_per_day >= 6
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {guard.avg_hours_per_day >= 8 ? 'Excellent' : 
-                           guard.avg_hours_per_day >= 6 ? 'Good' : 'Needs Improvement'}
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                          {guard.avg_hours_per_day >= 8 ? 'Excellent' :
+                            guard.avg_hours_per_day >= 6 ? 'Good' : 'Needs Improvement'}
                         </span>
                       </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Geo Check-out Events Table */}
+      {monthlyReport?.geo_checkout_events && monthlyReport.geo_checkout_events.length > 0 && (
+        <div className="bg-white shadow overflow-hidden sm:rounded-md mt-8">
+          <div className="px-4 py-5 sm:p-6">
+            <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+              Geofence (Geo) Check-out Events
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Guard</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shift</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Check-in</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Check-out</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {monthlyReport.geo_checkout_events.map((event, idx) => (
+                    <tr key={idx}>
+                      <td className="px-6 py-4 whitespace-nowrap">{event.guard}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">{event.shift}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">{new Date(event.checkin_time).toLocaleString()}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">{new Date(event.checkout_time).toLocaleString()}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">{event.notes}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -225,12 +277,11 @@ const Reports = () => {
               <div className="space-y-3">
                 {monthlyReport.alert_summary.by_severity.map((alert, index) => (
                   <div key={index} className="flex justify-between items-center">
-                    <span className={`text-sm font-medium capitalize ${
-                      alert.severity === 'critical' ? 'text-red-600' :
-                      alert.severity === 'high' ? 'text-orange-600' :
-                      alert.severity === 'medium' ? 'text-yellow-600' :
-                      'text-green-600'
-                    }`}>
+                    <span className={`text-sm font-medium capitalize ${alert.severity === 'critical' ? 'text-red-600' :
+                        alert.severity === 'high' ? 'text-orange-600' :
+                          alert.severity === 'medium' ? 'text-yellow-600' :
+                            'text-green-600'
+                      }`}>
                       {alert.severity}
                     </span>
                     <span className="text-sm text-gray-500">{alert.count}</span>

@@ -40,7 +40,8 @@ const Attendance = () => {
     console.log('attendances:', attendances);
     console.log('activeAttendances:', activeAttendances);
     console.log('user:', user);
-  }, [attendances, activeAttendances, user]);
+    console.log('selectedGuard:', selectedGuard);
+  }, [attendances, activeAttendances, user, selectedGuard]);
 
   const fetchAttendanceData = async () => {
     setLoading(true);
@@ -62,6 +63,7 @@ const Attendance = () => {
     setCheckinLoading(true);
     setCheckinError('');
     setCheckinSuccess('');
+    console.log('Starting check-in process...');
     // Get location from browser
     if (!navigator.geolocation) {
       setCheckinError('Geolocation is not supported by your browser.');
@@ -71,21 +73,25 @@ const Attendance = () => {
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         try {
-          await api.post('/attendance/checkin/', {
+          console.log('Location obtained, sending check-in request...');
+          const result = await api.post('/attendance/checkin/', {
             checkin_method: 'manual',
             notes: 'Manual check-in from dashboard',
             checkin_latitude: position.coords.latitude,
             checkin_longitude: position.coords.longitude,
           });
+          console.log('Check-in successful:', result);
           setCheckinSuccess('Checked in successfully!');
           fetchAttendanceData();
         } catch (error) {
+          console.error('Check-in failed:', error);
           setCheckinError('Check-in failed.');
         } finally {
           setCheckinLoading(false);
         }
       },
       (error) => {
+        console.error('Location error:', error);
         setCheckinError('Location permission denied or unavailable.');
         setCheckinLoading(false);
       }
@@ -93,11 +99,13 @@ const Attendance = () => {
   };
 
   const handleCheckout = async (attendanceId) => {
+    console.log('Starting check-out process for attendance ID:', attendanceId);
     try {
-      await api.post(`/attendance/checkout/${attendanceId}/`, {
+      const result = await api.post(`/attendance/checkout/${attendanceId}/`, {
         checkout_method: 'manual',
         notes: 'Manual checkout from dashboard'
       });
+      console.log('Check-out successful:', result);
       fetchAttendanceData();
     } catch (error) {
       console.error('Error checking out:', error);
@@ -140,6 +148,11 @@ const Attendance = () => {
   const filteredActiveAttendances = user?.role === 'guard'
     ? activeAttendances.filter(attendance => attendance.guard?.username === user.username)
     : activeAttendances.filter(attendance => String(attendance.guard?.id) === selectedGuard);
+
+  // Debug useEffect for filtered data
+  useEffect(() => {
+    console.log('filteredActiveAttendances:', filteredActiveAttendances);
+  }, [filteredActiveAttendances]);
 
   // Attendance status logic
   const getAttendanceForDate = (date) => {
@@ -265,8 +278,23 @@ const Attendance = () => {
         </div>
       </div>
 
+      {/* Debug Information for Guards */}
+      {user?.role === 'guard' && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+          <h4 className="text-sm font-medium text-yellow-800 mb-2">Debug Info:</h4>
+          <div className="text-xs text-yellow-700 space-y-1">
+            <div>User Role: {user?.role}</div>
+            <div>Username: {user?.username}</div>
+            <div>Active Attendances Count: {activeAttendances.length}</div>
+            <div>Filtered Active Attendances Count: {filteredActiveAttendances.length}</div>
+            <div>Show Check-in Button: {user?.role === 'guard' && filteredActiveAttendances.length === 0 ? 'Yes' : 'No'}</div>
+            <div>Show Check-out Button: {user?.role === 'guard' && filteredActiveAttendances.length > 0 ? 'Yes' : 'No'}</div>
+          </div>
+        </div>
+      )}
+
       {/* Guard Check-in Button */}
-      {user?.role === 'guard' && activeAttendances.length === 0 && (
+      {user?.role === 'guard' && filteredActiveAttendances.length === 0 && (
         <div className="bg-white shadow rounded-lg p-6 flex flex-col items-center">
           <div className="mb-4 text-lg font-semibold text-gray-700 text-center">You are currently <span className="text-red-600">checked out</span>.</div>
           <button
@@ -282,14 +310,14 @@ const Attendance = () => {
       )}
 
       {/* Active Attendances */}
-      {activeAttendances.length > 0 && (
+      {filteredActiveAttendances.length > 0 && (
         <div className="bg-white shadow rounded-lg">
           <div className="px-2 sm:px-4 py-5 sm:p-6">
             <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-              Currently Active ({activeAttendances.length})
+              Currently Active ({filteredActiveAttendances.length})
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {activeAttendances.map((attendance) => (
+              {filteredActiveAttendances.map((attendance) => (
                 <div key={attendance.id} className="border border-green-200 bg-green-50 rounded-lg p-4">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                     <div>
@@ -304,7 +332,7 @@ const Attendance = () => {
                         Active
                       </span>
                     </div>
-                    {user?.role === 'guard' && attendance.guard?.username === user.username && (
+                    {user?.role === 'guard' && (
                       <button
                         onClick={() => handleCheckout(attendance.id)}
                         className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700 w-full sm:w-auto"

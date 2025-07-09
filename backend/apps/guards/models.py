@@ -20,6 +20,10 @@ class Guard(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, null=True, blank=True, related_name='guard_profile')
     assigned_route = models.CharField(max_length=255, blank=True, null=True)
     is_active = models.BooleanField(default=True)
+    # Geofence fields
+    geofence_latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    geofence_longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    geofence_radius_m = models.PositiveIntegerField(null=True, blank=True, help_text='Radius in meters')
     # Use TextField to store comma-separated days (for MySQL compatibility)
     weekend_days = models.TextField(blank=True, default='')
     shifts = models.ManyToManyField('attendance.Shift', related_name='guards', blank=True)

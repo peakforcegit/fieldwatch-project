@@ -59,6 +59,8 @@ class CheckinSerializer(serializers.ModelSerializer):
         from apps.guards.models import Guard
         from apps.tracking.models import LocationLog
         from django.utils import timezone
+        from .models import Shift
+        from datetime import datetime, timedelta
 
         guard_id = validated_data.pop("guard_id", None)
         if guard_id is None:
@@ -90,15 +92,34 @@ class CheckinSerializer(serializers.ModelSerializer):
         validated_data["guard"] = guard
         validated_data["organization"] = guard.organization
         validated_data["checkin_time"] = timezone.now()
-        
+
+        # Auto-assign shift if not provided
+        if not validated_data.get("shift"):
+            now = timezone.localtime(validated_data["checkin_time"])
+            # Find all shifts for this guard's organization
+            shifts = Shift.objects.filter(organization=guard.organization)
+            # Find the shift where now is between start_time and end_time
+            matched_shift = None
+            for shift in shifts:
+                shift_start = datetime.combine(now.date(), shift.start_time)
+                shift_end = datetime.combine(now.date(), shift.end_time)
+                # Handle overnight shifts (end_time < start_time)
+                if shift_end <= shift_start:
+                    shift_end += timedelta(days=1)
+                if shift_start <= now <= shift_end:
+                    matched_shift = shift
+                    break
+            if matched_shift:
+                validated_data["shift"] = matched_shift
+
         # Add default values for required fields if not provided
         if "checkin_method" not in validated_data:
             validated_data["checkin_method"] = "manual"
-        
+
         # Ensure organization is set
         if not validated_data.get("organization"):
             validated_data["organization"] = self.context["request"].user.organization
-        
+
         # Save attendance
         attendance = super().create(validated_data)
 

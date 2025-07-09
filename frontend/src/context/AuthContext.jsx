@@ -16,8 +16,9 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    const refreshToken = localStorage.getItem('refresh_token');
+    // Check for tokens in sessionStorage first (current session), then localStorage (persistent)
+    const token = sessionStorage.getItem('access_token') || localStorage.getItem('access_token');
+    const refreshToken = sessionStorage.getItem('refresh_token') || localStorage.getItem('refresh_token');
     const fetchProfile = async () => {
       if (token) {
         try {
@@ -34,16 +35,25 @@ export const AuthProvider = ({ children }) => {
               } catch {
                 localStorage.removeItem('access_token');
                 localStorage.removeItem('refresh_token');
+                sessionStorage.removeItem('access_token');
+                sessionStorage.removeItem('refresh_token');
+                sessionStorage.removeItem('remember_me');
                 setUser(null);
               }
             } else {
               localStorage.removeItem('access_token');
               localStorage.removeItem('refresh_token');
+              sessionStorage.removeItem('access_token');
+              sessionStorage.removeItem('refresh_token');
+              sessionStorage.removeItem('remember_me');
               setUser(null);
             }
           } else {
             localStorage.removeItem('access_token');
             localStorage.removeItem('refresh_token');
+            sessionStorage.removeItem('access_token');
+            sessionStorage.removeItem('refresh_token');
+            sessionStorage.removeItem('remember_me');
             setUser(null);
           }
         } finally {
@@ -59,11 +69,17 @@ export const AuthProvider = ({ children }) => {
           } catch {
             localStorage.removeItem('access_token');
             localStorage.removeItem('refresh_token');
+            sessionStorage.removeItem('access_token');
+            sessionStorage.removeItem('refresh_token');
+            sessionStorage.removeItem('remember_me');
             setUser(null);
           }
         } else {
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
+          sessionStorage.removeItem('access_token');
+          sessionStorage.removeItem('refresh_token');
+          sessionStorage.removeItem('remember_me');
           setUser(null);
         }
         setLoading(false);
@@ -74,13 +90,22 @@ export const AuthProvider = ({ children }) => {
     fetchProfile();
   }, []);
 
-  const login = async (credentials) => {
+  const login = async (credentials, rememberMe = false) => {
     try {
       const response = await api.post('/auth/login/', credentials);
       // Some backends may not return user, access, refresh on login
       if (response && response.user && response.access && response.refresh) {
+        // Store tokens in localStorage (persistent across browser sessions)
         localStorage.setItem('access_token', response.access);
         localStorage.setItem('refresh_token', response.refresh);
+        
+        // If remember me is checked, also store in sessionStorage for current session
+        if (rememberMe) {
+          sessionStorage.setItem('access_token', response.access);
+          sessionStorage.setItem('refresh_token', response.refresh);
+          sessionStorage.setItem('remember_me', 'true');
+        }
+        
         setUser(response.user);
         return { success: true };
       } else {
@@ -139,8 +164,12 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    // Clear all authentication data from both localStorage and sessionStorage
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
+    sessionStorage.removeItem('access_token');
+    sessionStorage.removeItem('refresh_token');
+    sessionStorage.removeItem('remember_me');
     setUser(null);
   };
 

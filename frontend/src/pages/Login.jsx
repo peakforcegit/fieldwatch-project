@@ -12,13 +12,15 @@ const Login = () => {
 
   const [formData, setFormData] = useState({
     username: '',
-    password: ''
+    password: '',
+    rememberMe: false
   });
 
   const handleChange = (e) => {
+    const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+      [e.target.name]: value
     });
   };
 
@@ -31,16 +33,12 @@ const Login = () => {
       const result = await login({
         username: formData.username,
         password: formData.password
-      });
+      }, formData.rememberMe);
 
       if (!result.success) {
         setError(typeof result.error === 'string' ? result.error : 'An error occurred');
       } else {
-        // Check if user is admin, if not show error
-        if (result.user && result.user.role !== 'admin') {
-          setError('Only administrators can access this system. Please contact your administrator.');
-          return;
-        }
+        // Allow all user roles to login (admin, manager, guard)
         navigate('/dashboard');
       }
     } catch (err) {
@@ -64,7 +62,7 @@ const Login = () => {
             Real-time employee tracking system
           </p>
         </div>
-        
+
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="bg-white p-6 rounded-lg shadow-md space-y-4">
             {error && (
@@ -83,7 +81,7 @@ const Login = () => {
                 type="text"
                 required
                 className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                placeholder="Enter admin username"
+                placeholder="Enter your username"
                 value={formData.username}
                 onChange={handleChange}
               />
@@ -100,7 +98,7 @@ const Login = () => {
                   type={showPassword ? 'text' : 'password'}
                   required
                   className="appearance-none relative block w-full px-3 py-2 pr-10 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="Enter admin password"
+                  placeholder="Enter your password"
                   value={formData.password}
                   onChange={handleChange}
                 />
@@ -116,6 +114,20 @@ const Login = () => {
                   )}
                 </button>
               </div>
+            </div>
+
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="rememberMe"
+                name="rememberMe"
+                checked={formData.rememberMe}
+                onChange={handleChange}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="rememberMe" className="ml-2 block text-sm text-gray-900">
+                Remember me
+              </label>
             </div>
 
             <div>

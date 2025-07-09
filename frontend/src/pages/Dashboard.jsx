@@ -5,6 +5,7 @@ import api from '../services/api';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import { Alert, AlertTitle, AlertDescription } from '../components/ui/alert';
 
 // Custom marker icon to fix default icon issue in leaflet
 const guardIcon = new L.Icon({
@@ -44,17 +45,37 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [guardLocations, setGuardLocations] = useState([]);
   const [mapLoading, setMapLoading] = useState(false);
+  const [pendingCheckouts, setPendingCheckouts] = useState([]);
 
+  // Initial stats and locations fetch (on mount or user change)
   useEffect(() => {
+    if (user?.role === 'admin' || user?.role === 'manager') {
+      fetchPendingCheckouts();
+    }
     if (user?.role === 'admin') {
       fetchAdminStats();
-      fetchGuardLocations();
-      const interval = setInterval(fetchGuardLocations, 30000); // 30s polling
-      return () => clearInterval(interval);
+      fetchGuardLocations(); // initial fetch
     } else {
       setLoading(false);
     }
   }, [user]);
+
+  // Poll only guard locations every 30s (no page reload)
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      const interval = setInterval(fetchGuardLocations, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
+
+  const fetchPendingCheckouts = async () => {
+    try {
+      const res = await api.get('/attendance/active/');
+      setPendingCheckouts(res || []);
+    } catch (err) {
+      setPendingCheckouts([]);
+    }
+  };
 
   const fetchAdminStats = async () => {
     try {
@@ -82,6 +103,7 @@ const Dashboard = () => {
     }
   };
 
+  // Only set mapLoading for map section, not for the whole page
   const fetchGuardLocations = async () => {
     setMapLoading(true);
     try {
@@ -102,9 +124,20 @@ const Dashboard = () => {
     );
   }
 
+  // In-app alert for pending check-outs (admin/manager)
+  const showPendingCheckoutAlert = (user?.role === 'admin' || user?.role === 'manager') && pendingCheckouts.length > 0;
+
   if (user?.role === 'admin') {
     return (
       <div className="space-y-6 px-2 sm:px-4 md:px-8 lg:px-16 xl:px-32">
+        {showPendingCheckoutAlert && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTitle>Pending Check-outs</AlertTitle>
+            <AlertDescription>
+              {pendingCheckouts.length} guard(s) have not checked out yet. Please review active attendances.
+            </AlertDescription>
+          </Alert>
+        )}
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
           <p className="mt-1 text-sm text-gray-500">
